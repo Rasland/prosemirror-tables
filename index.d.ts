@@ -308,3 +308,12 @@ export function fixTables<S extends Schema = any>(
   state: EditorState<S>,
   oldState?: EditorState<S>
 ): null | Transaction<S>;
+
+export type Predicate = (node: ProsemirrorNode, pos: number) => void;
+
+export function changedDescendants<S extends Schema = any>(
+  old: EditorState<S>,
+  cur: EditorState<S>,
+  offset: number,
+  f: Predicate
+): void;

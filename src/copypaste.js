@@ -26,22 +26,26 @@ import {tableNodeTypes} from "./schema"
 export function pastedCells(slice) {
   if (!slice.size) return null
   let {content, openStart, openEnd} = slice
-  while (content.childCount == 1 && (openStart > 0 && openEnd > 0 || content.firstChild.type.spec.tableRole == "table")) {
+  while (content.childCount == 1 && (openStart > 0 && openEnd > 0 || /table/i.test(content.firstChild.type.spec.tableRole))) {
     openStart--
     openEnd--
     content = content.firstChild.content
   }
   let first = content.firstChild, role = first.type.spec.tableRole
   let schema = first.type.schema, rows = []
-  if (role == "row") {
+  if (/row/i.test(role)) {
     for (let i = 0; i < content.childCount; i++) {
       let cells = content.child(i).content
+      for (let j = 0; j < cells.childCount; j++) {
+        let cell = cells.child(j)
+        delete cell.attrs.colwidth
+      }
       let left = i ? 0 : Math.max(0, openStart - 1)
       let right = i < content.childCount - 1 ? 0 : Math.max(0, openEnd - 1)
       if (left || right) cells = fitSlice(tableNodeTypes(schema).row, new Slice(cells, left, right)).content
       rows.push(cells)
     }
-  } else if (role == "cell" || role == "header_cell") {
+  } else if (/cell/i.test(role)) {
     rows.push(openStart || openEnd ? fitSlice(tableNodeTypes(schema).row, new Slice(content, openStart, openEnd)).content : content)
   } else {
     return null

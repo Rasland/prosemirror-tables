@@ -76,7 +76,7 @@ function deleteCellSelection(state, dispatch) {
   if (dispatch) {
     let tr = state.tr, baseContent = tableNodeTypes(state.schema).cell.createAndFill().content
     sel.forEachCell((cell, pos) => {
-      if (!cell.content.eq(baseContent))
+      if (cell.type.spec.editable && !cell.content.eq(baseContent))
         tr.replace(tr.mapping.map(pos + 1), tr.mapping.map(pos + cell.nodeSize - 1),
                    new Slice(baseContent, 0, 0))
     })
@@ -181,7 +181,7 @@ function atEndOfCell(view, axis, dir) {
   for (let d = $head.depth - 1; d >= 0; d--) {
     let parent = $head.node(d), index = dir < 0 ? $head.index(d) : $head.indexAfter(d)
     if (index != (dir < 0 ? 0 : parent.childCount)) return null
-    if (parent.type.spec.tableRole == "cell" || parent.type.spec.tableRole == "header_cell") {
+    if (/cell/i.test(parent.type.spec.tableRole)) {
       let cellPos = $head.before(d)
       let dirStr = axis == "vert" ? (dir > 0 ? "down" : "up") : (dir > 0 ? "right" : "left")
       return view.endOfTextblock(dirStr) ? cellPos : null

@@ -9,7 +9,8 @@ import {Plugin} from "prosemirror-state"
 import {handleTripleClick, handleKeyDown, handlePaste, handleMouseDown} from "./input"
 import {key as tableEditingKey} from "./util"
 import {drawCellSelection, normalizeSelection} from "./cellselection"
-import {fixTables, fixTablesKey} from "./fixtables"
+import {fixTables, fixTablesKey, changedDescendants} from "./fixtables"
+import { DecorationSet } from "prosemirror-view"
 
 // :: () → Plugin
 //
@@ -23,7 +24,7 @@ import {fixTables, fixTablesKey} from "./fixtables"
 // rather broadly, and other plugins, like the gap cursor or the
 // column-width dragging plugin, might want to get a turn first to
 // perform more specific behavior.
-export function tableEditing({ allowTableNodeSelection = false } = {}) {
+export function tableEditing(editor) {
   return new Plugin({
     key: tableEditingKey,
 
@@ -42,7 +43,8 @@ export function tableEditing({ allowTableNodeSelection = false } = {}) {
     },
 
     props: {
-      decorations: drawCellSelection,
+      // TODO Remove it!
+      decorations: state => editor.options.editable ? drawCellSelection(state) : DecorationSet.empty,
 
       handleDOMEvents: {
         mousedown: handleMouseDown
@@ -60,18 +62,17 @@ export function tableEditing({ allowTableNodeSelection = false } = {}) {
     },
 
     appendTransaction(_, oldState, state) {
-      return normalizeSelection(state, fixTables(state, oldState), allowTableNodeSelection)
+      return normalizeSelection(state, fixTables(state, oldState), editor.options.allowTableNodeSelection)
     }
   })
 }
 
-export {fixTables, handlePaste, fixTablesKey}
+export {fixTables, changedDescendants, handlePaste, fixTablesKey}
 export {cellAround, isInTable, selectionCell, moveCellForward, inSameTable, findCell, colCount, nextCell, setAttr, pointsAtCell, removeColSpan, addColSpan, columnIsHeader} from "./util";
 export {tableNodes, tableNodeTypes} from "./schema"
 export {CellSelection} from "./cellselection"
 export {TableMap} from "./tablemap"
 export {tableEditingKey};
 export * from "./commands"
-export {columnResizing, key as columnResizingPluginKey} from "./columnresizing"
 export {updateColumns as updateColumnsOnResize, TableView} from "./tableview"
 export {pastedCells as __pastedCells, insertCells as __insertCells, clipCells as __clipCells} from "./copypaste"

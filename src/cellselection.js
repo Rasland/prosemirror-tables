@@ -64,16 +64,20 @@ export class CellSelection extends Selection {
   // Returns a rectangular slice of table rows containing the selected
   // cells.
   content() {
-    let table = this.$anchorCell.node(-1), map = TableMap.get(table), start = this.$anchorCell.start(-1)
+    let table = this.$anchorCell.node(-2), colgroup = table.firstChild, tbody = this.$anchorCell.node(-1), map = TableMap.get(tbody), start = this.$anchorCell.start(-1)
     let rect = map.rectBetween(this.$anchorCell.pos - start, this.$headCell.pos - start)
     let seen = {}, rows = []
+    let cols = []
+    for (let col = rect.left; col < rect.right; col++) {
+      cols.push(colgroup.child(col))
+    }
     for (let row = rect.top; row < rect.bottom; row++) {
       let rowContent = []
       for (let index = row * map.width + rect.left, col = rect.left; col < rect.right; col++, index++) {
         let pos = map.map[index]
         if (!seen[pos]) {
           seen[pos] = true
-          let cellRect = map.findCell(pos), cell = table.nodeAt(pos)
+          let cellRect = map.findCell(pos), cell = tbody.nodeAt(pos)
           let extraLeft = rect.left - cellRect.left, extraRight = cellRect.right - rect.right
           if (extraLeft > 0 || extraRight > 0) {
             let attrs = cell.attrs
@@ -90,10 +94,16 @@ export class CellSelection extends Selection {
           rowContent.push(cell)
         }
       }
-      rows.push(table.child(row).copy(Fragment.from(rowContent)))
+      rows.push(tbody.child(row).copy(Fragment.from(rowContent)))
     }
-
-    const fragment = this.isColSelection() && this.isRowSelection() ? table : rows;
+    const tbodyCopy = tbody.type.create(null, rows)
+    const colgroupCopy = colgroup.type.create(null, cols)
+    let tableWidth = cols.reduce((total, width) => total + width)
+    let fragment = this.isColSelection() && this.isRowSelection() ? table : table.type.create({ width: tableWidth }, [colgroupCopy, tbodyCopy])
+    if (table.type.spec.tableRole !=='table') {
+      let wrapper = this.$anchorCell.node(-3)
+      fragment = wrapper.type.create(null, fragment)
+    }
     return new Slice(Fragment.from(fragment), 1, 1)
   }
 
@@ -190,7 +200,7 @@ export class CellSelection extends Selection {
   }
 
   toJSON() {
-    return {type: "cell", anchor: this.$anchorCell.pos, head: this.$headCell.pos}
+    return {type: "cellSelection", anchor: this.$anchorCell.pos, head: this.$headCell.pos}
   }
 
   static fromJSON(doc, json) {
@@ -207,7 +217,7 @@ export class CellSelection extends Selection {
 
 CellSelection.prototype.visible = false
 
-Selection.jsonID("cell", CellSelection)
+Selection.jsonID("cellSelection", CellSelection)
 
 class CellBookmark {
   constructor(anchor, head) {
@@ -219,8 +229,8 @@ class CellBookmark {
   }
   resolve(doc) {
     let $anchorCell = doc.resolve(this.anchor), $headCell = doc.resolve(this.head)
-    if ($anchorCell.parent.type.spec.tableRole == "row" &&
-        $headCell.parent.type.spec.tableRole == "row" &&
+    if (/row/i.test($anchorCell.parent.type.spec.tableRole) &&
+        /row/i.test($headCell.parent.type.spec.tableRole) &&
         $anchorCell.index() < $anchorCell.parent.childCount &&
         $headCell.index() < $headCell.parent.childCount &&
         inSameTable($anchorCell, $headCell))
@@ -240,44 +250,69 @@ export function drawCellSelection(state) {
 }
 
 function isCellBoundarySelection({$from, $to}) {
-  if ($from.pos == $to.pos || $from.pos < $from.pos - 6) return false // Cheap elimination
+  if ($from.pos == $to.pos || $from.pos < $from.pos - 6) return false // Cheap elimination TODO Возможно ошибка в коде исходного пакета?
   let afterFrom = $from.pos, beforeTo = $to.pos, depth = $from.depth
   for (; depth >= 0; depth--, afterFrom++)
     if ($from.after(depth + 1) < $from.end(depth)) break
   for (let d = $to.depth; d >= 0; d--, beforeTo--)
     if ($to.before(d + 1) > $to.start(d)) break
-  return afterFrom == beforeTo && /row|table/.test($from.node(depth).type.spec.tableRole)
+  return afterFrom == beforeTo && /row|tbody|table/i.test($from.node(depth).type.spec.tableRole) // TOOD colgroup?
 }
 
-function isTextSelectionAcrossCells({$from, $to}) {
-  let fromCellBoundaryNode;
-  let toCellBoundaryNode;
+function normalizeTextSelectionAcrossCells(doc, ref) {
+  const $from = ref.$from
+  const $to = ref.$to
+
+  let fromCellBoundaryNode
+  let toCellBoundaryNode
+
+  let fromTable
+  let toTable
 
   for (let i = $from.depth; i > 0; i--) {
-    let node = $from.node(i);
-    if (node.type.spec.tableRole === 'cell' || node.type.spec.tableRole === 'header_cell') {
-      fromCellBoundaryNode = node;
-      break;
+    const node = $from.node(i)
+    if (/cell/i.test(node.type.spec.tableRole) || node.type.spec.tableRole === 'summary') {
+      fromCellBoundaryNode = node
+    } else if (node.type.spec.tableRole === 'table' || node.type.spec.tableRole === 'wrapper') {
+      fromTable = {
+        node,
+        before: $from.before(i),
+        after: $from.after(i)
+      }
+      break
     }
   }
 
-  for (let i = $to.depth; i > 0; i--) {
-    let node = $to.node(i);
-    if (node.type.spec.tableRole === 'cell' || node.type.spec.tableRole === 'header_cell') {
-      toCellBoundaryNode = node;
-      break;
+  for (let i$1 = $to.depth; i$1 > 0; i$1--) {
+    const node$1 = $to.node(i$1)
+    if (/cell/i.test(node$1.type.spec.tableRole) || node$1.type.spec.tableRole === 'summary') {
+      toCellBoundaryNode = node$1
+    } else if (node$1.type.spec.tableRole === 'table' || node$1.type.spec.tableRole === 'wrapper') {
+      toTable = {
+        node: node$1,
+        before: $to.before(i$1),
+        after: $to.after(i$1)
+      }
+      break
     }
   }
 
-  return fromCellBoundaryNode !== toCellBoundaryNode && $to.parentOffset === 0
+  if (fromCellBoundaryNode && toCellBoundaryNode && fromCellBoundaryNode !== toCellBoundaryNode) {
+    return TextSelection.create(doc, $from.start(), $from.end())
+  } else if (fromCellBoundaryNode && !toCellBoundaryNode) {
+    return TextSelection.create(doc, $to.end(), fromTable.before)
+  } else if (toCellBoundaryNode && !fromCellBoundaryNode) {
+    return TextSelection.create(doc, $from.start(), toTable.after)
+  }
+  return null
 }
 
 export function normalizeSelection(state, tr, allowTableNodeSelection) {
   let sel = (tr || state).selection, doc = (tr || state).doc, normalize, role
   if (sel instanceof NodeSelection && (role = sel.node.type.spec.tableRole)) {
-    if (role == "cell" || role == "header_cell") {
+    if (/cell/i.test(role)) {
       normalize = CellSelection.create(doc, sel.from)
-    } else if (role == "row") {
+    } else if (/row/i.test(role)) {
       let $cell = doc.resolve(sel.from + 1)
       normalize = CellSelection.rowSelection($cell, $cell)
     } else if (!allowTableNodeSelection) {
@@ -287,8 +322,8 @@ export function normalizeSelection(state, tr, allowTableNodeSelection) {
     }
   } else if (sel instanceof TextSelection && isCellBoundarySelection(sel)) {
     normalize = TextSelection.create(doc, sel.from)
-  } else if (sel instanceof TextSelection && isTextSelectionAcrossCells(sel)) {
-    normalize = TextSelection.create(doc, sel.$from.start(), sel.$from.end());
+  } else if (sel instanceof TextSelection) {
+    normalize = normalizeTextSelectionAcrossCells(doc, sel)
   }
   if (normalize)
     (tr || (tr = state.tr)).setSelection(normalize)

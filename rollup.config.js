@@ -12,5 +12,7 @@ export default {
     sourcemap: true
   }],
   plugins: [buble()],
-  external(id) { return !/^[\.\/]/.test(id) }
+  // external(id) {
+  //   return !/^[\.\/]/.test(id)
+  // }
 }

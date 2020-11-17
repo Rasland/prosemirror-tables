@@ -9,7 +9,6 @@ import {
   addColSpan,
   cellAround,
   cellWrapping,
-  columnIsHeader,
   isInTable,
   moveCellForward,
   removeColSpan,
@@ -37,24 +36,19 @@ export function selectedRect(state) {
 
 // Add a column at the given position in a table.
 export function addColumn(tr, {map, tableStart, table}, col) {
-  let refColumn = col > 0 ? -1 : 0
-  if (columnIsHeader(map, table, col + refColumn))
-    refColumn = col == 0 || col == map.width ? null : 0
-
   for (let row = 0; row < map.height; row++) {
-    let index = row * map.width + col
+    const index = row * map.width + col
     // If this position falls inside a col-spanning cell
     if (col > 0 && col < map.width && map.map[index - 1] == map.map[index]) {
-      let pos = map.map[index], cell = table.nodeAt(pos)
+      const pos = map.map[index], cell = table.nodeAt(pos)
       tr.setNodeMarkup(tr.mapping.map(tableStart + pos), null,
                        addColSpan(cell.attrs, col - map.colCount(pos)))
       // Skip ahead if rowspan > 1
       row += cell.attrs.rowspan - 1
     } else {
-      let type = refColumn == null ? tableNodeTypes(table.type.schema).cell
-          : table.nodeAt(map.map[index + refColumn]).type
-      let pos = map.positionAt(row, col, table)
-      tr.insert(tr.mapping.map(tableStart + pos), type.createAndFill())
+      const { cell } = tableNodeTypes(table.type.schema)
+      const pos = map.positionAt(row, col, table)
+      tr.insert(tr.mapping.map(tableStart + pos), cell.createAndFill())
     }
   }
   return tr
@@ -487,7 +481,7 @@ export function deleteTable(state, dispatch) {
   let $pos = state.selection.$anchor
   for (let d = $pos.depth; d > 0; d--) {
     let node = $pos.node(d)
-    if (node.type.spec.tableRole == "table") {
+    if (/table/i.test(node.type.spec.tableRole)) {
       if (dispatch) dispatch(state.tr.delete($pos.before(d), $pos.after(d)).scrollIntoView())
       return true
     }

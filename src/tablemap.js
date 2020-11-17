@@ -145,9 +145,9 @@ export class TableMap {
 
 // Compute a table map.
 function computeMap(table) {
-  if (table.type.spec.tableRole != "table") throw new RangeError("Not a table node: " + table.type.name)
+  if (!/tbody/i.test(table.type.spec.tableRole)) throw new RangeError("Not a table body node: " + table.type.name)
   let width = findWidth(table), height = table.childCount
-  let map = [], mapPos = 0, problems = null, colWidths = []
+  let map = [], mapPos = 0, problems = null
   for (let i = 0, e = width * height; i < e; i++) map[i] = 0
 
   for (let row = 0, pos = 0; row < height; row++) {
@@ -156,7 +156,7 @@ function computeMap(table) {
     for (let i = 0;; i++) {
       while (mapPos < map.length && map[mapPos] != 0) mapPos++
       if (i == rowNode.childCount) break
-      let cellNode = rowNode.child(i), {colspan, rowspan, colwidth} = cellNode.attrs
+      let cellNode = rowNode.child(i), {colspan, rowspan} = cellNode.attrs
       for (let h = 0; h < rowspan; h++) {
         if (h + row >= height) {
           (problems || (problems = [])).push({type: "overlong_rowspan", pos, n: rowspan - h})
@@ -168,16 +168,6 @@ function computeMap(table) {
             map[start + w] = pos
           else
             (problems || (problems = [])).push({type: "collision", row, pos, n: colspan - w})
-          let colW = colwidth && colwidth[w]
-          if (colW) {
-            let widthIndex = ((start + w) % width) * 2, prev = colWidths[widthIndex]
-            if (prev == null || (prev != colW && colWidths[widthIndex + 1] == 1)) {
-              colWidths[widthIndex] = colW
-              colWidths[widthIndex + 1] = 1
-            } else if (prev == colW) {
-              colWidths[widthIndex + 1]++
-            }
-          }
         }
       }
       mapPos += colspan
@@ -189,14 +179,7 @@ function computeMap(table) {
     pos++
   }
 
-  let tableMap = new TableMap(width, height, map, problems), badWidths = false
-
-  // For columns that have defined widths, but whose widths disagree
-  // between rows, fix up the cells whose width doesn't match the
-  // computed one.
-  for (let i = 0; !badWidths && i < colWidths.length; i += 2)
-    if (colWidths[i] != null && colWidths[i + 1] < height) badWidths = true
-  if (badWidths) findBadColWidths(tableMap, colWidths, table)
+  let tableMap = new TableMap(width, height, map, problems)
 
   return tableMap
 }
@@ -223,27 +206,4 @@ function findWidth(table) {
       width = Math.max(width, rowWidth)
   }
   return width
-}
-
-function findBadColWidths(map, colWidths, table) {
-  if (!map.problems) map.problems = []
-  for (let i = 0, seen = {}; i < map.map.length; i++) {
-    let pos = map.map[i]
-    if (seen[pos]) continue
-    seen[pos] = true
-    let node = table.nodeAt(pos), updated = null
-    for (let j = 0; j < node.attrs.colspan; j++) {
-      let col = (i + j) % map.width, colWidth = colWidths[col * 2]
-      if (colWidth != null && (!node.attrs.colwidth || node.attrs.colwidth[j] != colWidth))
-        (updated || (updated = freshColWidth(node.attrs)))[j] = colWidth
-    }
-    if (updated) map.problems.unshift({type: "colwidth mismatch", pos, colwidth: updated})
-  }
-}
-
-function freshColWidth(attrs) {
-  if (attrs.colwidth) return attrs.colwidth.slice()
-  let result = []
-  for (let i = 0; i < attrs.colspan; i++) result.push(0)
-  return result
 }

@@ -9,21 +9,30 @@ export const key = new PluginKey("selectingCells")
 
 export function cellAround($pos) {
   for (let d = $pos.depth - 1; d > 0; d--)
-    if ($pos.node(d).type.spec.tableRole == "row") return $pos.node(0).resolve($pos.before(d + 1))
+    if (/row/i.test($pos.node(d).type.spec.tableRole)) return $pos.node(0).resolve($pos.before(d + 1))
   return null
 }
 
 export function cellWrapping($pos) {
   for (let d = $pos.depth; d > 0; d--) { // Sometimes the cell can be in the same depth.
     const role = $pos.node(d).type.spec.tableRole;
-    if (role === "cell" || role === 'header_cell') return $pos.node(d)
+    if (/cell/i.test(role)) return $pos.node(d)
   }
   return null
 }
 
 export function isInTable(state) {
   let $head = state.selection.$head
-  for (let d = $head.depth; d > 0; d--) if ($head.node(d).type.spec.tableRole == "row") return true
+  for (let d = $head.depth; d > 0; d--) if (/row/i.test($head.node(d).type.spec.tableRole)) return true
+  return false
+}
+
+export function isInCustomTable(state) {
+  let $head = state.selection.$head
+  for (let d = $head.depth; d > 0; d--) {
+    let role = $head.node(d).type.spec.tableRole
+    if (/row/i.test(role) && role !== 'row') return true
+  }
   return false
 }
 
@@ -31,7 +40,7 @@ export function selectionCell(state) {
   let sel = state.selection
   if (sel.$anchorCell) {
     return sel.$anchorCell.pos > sel.$headCell.pos ? sel.$anchorCell : sel.$headCell;
-  } else if (sel.node && sel.node.type.spec.tableRole == "cell") {
+  } else if (sel.node && /cell/i.test(sel.node.type.spec.tableRole)) {
     return sel.$anchor
   }
   return cellAround(sel.$head) || cellNear(sel.$head)
@@ -40,16 +49,16 @@ export function selectionCell(state) {
 function cellNear($pos) {
   for (let after = $pos.nodeAfter, pos = $pos.pos; after; after = after.firstChild, pos++) {
     let role = after.type.spec.tableRole
-    if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos)
+    if (/cell/i.test(role)) return $pos.doc.resolve(pos)
   }
   for (let before = $pos.nodeBefore, pos = $pos.pos; before; before = before.lastChild, pos--) {
     let role = before.type.spec.tableRole
-    if (role == "cell" || role == "header_cell") return $pos.doc.resolve(pos - before.nodeSize)
+    if (/cell/i.test(role)) return $pos.doc.resolve(pos - before.nodeSize)
   }
 }
 
 export function pointsAtCell($pos) {
-  return $pos.parent.type.spec.tableRole == "row" && $pos.nodeAfter
+  return /row/i.test($pos.parent.type.spec.tableRole) && $pos.nodeAfter
 }
 
 export function moveCellForward($pos) {
@@ -106,4 +115,22 @@ export function columnIsHeader(map, table, col) {
     if (table.nodeAt(map.map[col + row * map.width]).type != headerCell)
       return false
   return true
+}
+
+export const findBody = (table) => {
+  let tbody
+  for (let i = 0; i < table.childCount; i++) {
+    const child = table.child(i)
+    if (/tbody/i.test(child.type.spec.tableRole)) tbody = child
+  }
+  return tbody
+}
+
+export const findColgroup = (table) => {
+  let colgroup
+  for (let i = 0; i < table.childCount; i++) {
+    const child = table.child(i)
+    if (/colgroup/i.test(child.type.spec.tableRole)) colgroup = child
+  }
+  return colgroup
 }
